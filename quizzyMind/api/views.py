@@ -4,28 +4,43 @@ from rest_framework.response import Response
 from rest_framework import status
 from .models import *
 from .serializers import *
+from authentication.auth import CookieAuthentication
+from rest_framework.permissions import IsAuthenticated
 
 class StartQuizView(APIView):
-    def post(self, request, quiz_id):
+    authentication_classes = [CookieAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
         user = request.user
-        quiz = Quiz.objects.filter(id=quiz_id)
+        quiz_id = request.data.get("quiz_id")
+        quiz = Quiz.objects.filter(id=quiz_id).first()
 
         if not quiz:
-            return Response({"error": "No quiz Found"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "No quiz found"}, status=status.HTTP_400_BAD_REQUEST)
 
-        submission = QuizSubmission.objects.create(user=user, quiz=quiz)
-        first_question = quiz.questions.first()
+        submission, created = QuizSubmission.objects.get_or_create(user=user, quiz=quiz)
 
-        if not first_question:
-            return Response({"error": "No questions available"}, status=status.HTTP_400_BAD_REQUEST)
+        questions = quiz.questions.all()
+        serialized_questions = QuestionSerializer(questions, many=True).data
+
+        existing_answers = QuizSubmissionAnswer.objects.filter(submission=submission)
+        answer_map = {answer.question.id: answer.selected_option.id for answer in existing_answers}
+
+        for question in serialized_questions:
+            question["selected_option"] = answer_map.get(question["id"], None)
 
         return Response({
             "submission_id": submission.id,
-            "question": QuestionSerializer(first_question).data,
-            "selected_option": None
+            "quiz_title": quiz.title,
+            "questions": serialized_questions
         }, status=status.HTTP_200_OK)
 
+
 class SubmitAnswerView(APIView):
+    authentication_classes = [CookieAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def post(self, request):
         submission_id = request.data.get("submission_id")
         question_id = request.data.get("question_id")
@@ -41,53 +56,50 @@ class SubmitAnswerView(APIView):
         answer, created = QuizSubmissionAnswer.objects.update_or_create(
             submission=submission,
             question=question,
-            defaults={"selected_option": selected_option}
+            selected_option=selected_option
         )
 
-        if selected_option.is_correct:
-            submission.score += 1
-            submission.save()
+        submission.score = sum(1 for a in QuizSubmissionAnswer.objects.filter(submission=submission) if a.selected_option.is_correct)
+        submission.save()
 
-        next_question = submission.quiz.questions.filter(question_number__gt=question.question_number).first()
+        return Response({"message": "Answer marked successfully"}, status=status.HTTP_200_OK)
 
-        if not next_question:
-            return Response({
-                "message": "Quiz Completed!",
-                "score": submission.score,
-                "total_questions": submission.quiz.questions.count()
-            }, status=status.HTTP_200_OK)
+class QuizResultView(APIView):
+    authentication_classes = [CookieAuthentication]
+    permission_classes = [IsAuthenticated]
 
-        return Response({
-            "question": QuestionSerializer(next_question).data,
-            "selected_option": None
-        }, status=status.HTTP_200_OK)
-
-class NavigateView(APIView):
     def post(self, request):
-        submission_id = request.data.get("submission_id")
-        question_id = request.data.get("question_id")
-        direction = request.data.get("direction")  # 'previous' or 'next'
+        quiz_id = request.data.get("quiz_id")
+        user = request.user
 
-        if direction not in ["previous", "next"]:
-            return Response({"error": "Invalid direction"}, status=status.HTTP_400_BAD_REQUEST)
+        quizSubmission = QuizSubmission.objects.filter(user=user, quiz_id=quiz_id).first()
+        if not quizSubmission:
+            return Response({"error": "No submission found"}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            submission = QuizSubmission.objects.get(id=submission_id)
-            current_question = Question.objects.get(id=question_id)
-        except (QuizSubmission.DoesNotExist, Question.DoesNotExist):
-            return Response({"error": "Invalid submission or question"}, status=status.HTTP_400_BAD_REQUEST)
-
-        if direction == "previous":
-            target_question = submission.quiz.questions.filter(question_number__lt=current_question.question_number).last()
-        else:
-            target_question = submission.quiz.questions.filter(question_number__gt=current_question.question_number).first()
-
-        if not target_question:
-            return Response({"error": f"No {direction} question available"}, status=status.HTTP_400_BAD_REQUEST)
-
-        existing_answer = QuizSubmissionAnswer.objects.filter(submission=submission, question=target_question).first()
+        answers = QuizSubmissionAnswer.objects.filter(submission=quizSubmission)
+        
+        result_data = []
+        for answer in answers:
+            question = answer.question
+            correct_option = question.options.filter(is_correct=True).first()
+            result_data.append({
+                "question": QuestionSerializer(question).data,
+                "selected_option": OptionSerializer(answer.selected_option).data,
+                "correct_option": OptionSerializer(correct_option).data if correct_option else None,
+                "is_correct": answer.selected_option == correct_option
+            })
 
         return Response({
-            "question": QuestionSerializer(target_question).data,
-            "selected_option": existing_answer.selected_option.id if existing_answer else None
+            "quiz": quizSubmission.quiz.title,
+            "total_questions": quizSubmission.quiz.questions.count(),
+            "score": quizSubmission.score,
+            "results": result_data
         }, status=status.HTTP_200_OK)
+
+
+
+class ListAllQuizView(APIView):
+    def get(self, request):
+        quizzes = Quiz.objects.all()
+        serializer = QuizSerializer(quizzes, many=True)
+        return Response(serializer.data)

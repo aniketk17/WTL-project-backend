@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User
+from .models import User, Profile
 from django.contrib.auth import authenticate
 
 class UserRegisterSerializer(serializers.ModelSerializer):
@@ -46,4 +46,12 @@ class UserLoginSerializer(serializers.Serializer):
         
         data["user"] = user
         return data
-    
+
+class ProfileSerializer(serializers.ModelSerializer):
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = Profile
+        fields = ["user", "first_name", "last_name", "phone_number", "profile_pic", "bio", "institute_name", "address"]
+
+        

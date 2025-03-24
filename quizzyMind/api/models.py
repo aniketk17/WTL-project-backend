@@ -59,12 +59,7 @@ class QuizSubmission(models.Model):
 class QuizSubmissionAnswer(models.Model):
     submission = models.ForeignKey(QuizSubmission, related_name='answers', on_delete=models.CASCADE)
     question = models.ForeignKey(Question, on_delete=models.CASCADE)
-    selected_option = models.TextField()
-    is_correct = models.BooleanField(default=False)
-    submitted_at = models.DateTimeField(auto_now_add=True)
-
-    # def save(self, *args, **kwargs):
-    #     self.is_correct = self.selected_option
+    selected_option = models.ForeignKey(Option, on_delete=models.CASCADE)
 
     def __str__(self):
-        return f"Q: {self.question.text} | Answer: {self.selected_option.option_text} | Correct: {self.is_correct}"
+        return f"Q: {self.question.text} | Answer: {self.selected_option.option_text}"
