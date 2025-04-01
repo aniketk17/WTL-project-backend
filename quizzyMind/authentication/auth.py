@@ -8,11 +8,14 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 class CookieAuthentication(BaseAuthentication):
    
-    def authenticate(self, request):
-        token = request.COOKIES.get("access_token")
+     def authenticate(self, request):
+        token = request.headers.get("Authorization")
 
         if not token:
             return None
+
+        if token.startswith("Bearer "):
+            token = token.split(" ")[1]
 
         try:
             access_token = AccessToken(token)
@@ -28,3 +31,4 @@ class CookieAuthentication(BaseAuthentication):
             raise AuthenticationFailed(_("User not found."))
 
         return None
+

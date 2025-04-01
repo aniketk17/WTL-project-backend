@@ -1,6 +1,5 @@
 from rest_framework import serializers
-from .models import Category, Quiz, Question, Option, QuizSubmission, QuizSubmissionAnswer
-
+from .models import *
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
@@ -16,23 +15,25 @@ class QuizSerializer(serializers.ModelSerializer):
 class OptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Option
-        fields = ['id', 'option_text', 'is_correct']
+        fields = ['option_text']
 
 class QuestionSerializer(serializers.ModelSerializer):
-    options = OptionSerializer(many=True, read_only=True)
+    options = serializers.SerializerMethodField()
+    correctAnswer = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
-        fields = ['id', 'text', 'options']
+        fields = ['text', 'options', 'correctAnswer']
 
-class QuizSubmisionSerializer(serializers.ModelSerializer):
+    def get_options(self, obj):
+        return [option.option_text for option in obj.options.all()]
+
+    def get_correctAnswer(self, obj):
+        correct_option = obj.options.filter(is_correct=True).first()
+        return correct_option.option_text if correct_option else None
+
+
+class QuizSubmissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = QuizSubmission
         fields = ['id', 'user', 'quiz', 'score', 'created_at', 'updated_at']
-
-class QuizSubmissionAnswerSerializer(serializers.ModelSerializer):
-    selected_option = serializers.PrimaryKeyRelatedField(queryset=Option.objects.all())
-
-    class Meta:
-        model = QuizSubmissionAnswer
-        fields = ["submission", "question", "selected_option"]

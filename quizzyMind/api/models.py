@@ -55,11 +55,3 @@ class QuizSubmission(models.Model):
     def __str__(self):
         return f"{self.user.username} submission for {self.quiz.title}"
 
-
-class QuizSubmissionAnswer(models.Model):
-    submission = models.ForeignKey(QuizSubmission, related_name='answers', on_delete=models.CASCADE)
-    question = models.ForeignKey(Question, on_delete=models.CASCADE)
-    selected_option = models.ForeignKey(Option, on_delete=models.CASCADE)
-
-    def __str__(self):
-        return f"Q: {self.question.text} | Answer: {self.selected_option.option_text}"
